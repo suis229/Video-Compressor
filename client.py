@@ -2,7 +2,7 @@ import socket
 import os
 import sys
 import readline
-
+import json
 
 class TCPClient:
     def __init__(self, server_address, server_port):
@@ -13,6 +13,7 @@ class TCPClient:
     
     def upload_file(self):
         try:
+            # ファイルパス入力
             file_path = input("アップロードするファイルのパスを入力してください: ")
             if not file_path.endswith('.mp4'):
                 print("mp4 ファイルのみアップロード可能です")
@@ -20,6 +21,12 @@ class TCPClient:
             
             file_size_int = os.path.getsize(file_path)
             file_size = file_size_int.to_bytes(32, 'big')
+            
+            # メディアタイプ入力
+            media_type = input("メディアタイプを入力してください: ")
+            media_type_bytes = media_type.encode('utf-8')
+
+            
 
             try:
                 self.sock.connect((self.server_address, self.server_port))
