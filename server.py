@@ -62,32 +62,85 @@ class TCPServer:
                 operation = json_file.get('operation')
                 
                 if operation == 1:
-                    self.compress(media_type, output_file_path)
+                    send_file_path = self.compress(media_type, output_file_path)
                 
                 elif operation == 2:
                     resolution = json_file.get('resolution')
-                    self.change_resolution(media_type, output_file_path, resolution)
+                    send_file_path = self.change_resolution(media_type, output_file_path, resolution)
                 
                 elif operation == 3:
                     aspect_ratio_num = json_file.get('aspect_ratio_num')
-                    self.change_aspect_ratio(media_type, output_file_path, aspect_ratio_num)
+                    send_file_path = self.change_aspect_ratio(media_type, output_file_path, aspect_ratio_num)
                 
                 elif operation == 4:
                     output_mp3_file_path = "processed/uploaded_file_" + str(payload_size) + ".mp3"
-                    self.convert_to_audio(output_file_path, output_mp3_file_path)
+                    send_file_path = self.convert_to_audio(output_file_path, output_mp3_file_path)
 
                 elif operation == 5:
                     output_gif_file_path = "processed/uploaded_file_" + str(payload_size) + ".gif"
                     start_time = json_file.get('start_time')
                     duration = json_file.get('duration')
-                    self.create_gif(output_file_path, output_gif_file_path, start_time, duration)
+                    send_file_path = self.create_gif(output_file_path, output_gif_file_path, start_time, duration)
                 
                 else:
                     print("operationが1~5の数値以外です")
                 
+                # クライアントへの処理済みファイルの送信
+                send_json_file = {
+                    "error": False,
+                    "error_message": None
+                }
+
+                send_json_string_bytes = json.dumps(send_json_file).encode('utf-8')
+                send_json_string_bytes_size = len(send_json_string_bytes)
+                send_json_string_len_bytes = send_json_string_bytes_size.to_bytes(2, "big")
+
+                send_file_size_int = os.path.getsize(send_file_path)
+                send_payload_size = send_file_size_int.to_bytes(5, 'big')
+
+                send_file_split = os.path.splitext(send_file_path)
+
+                send_media_type = send_file_split[1]
+                send_media_type_bytes = send_media_type.encode('utf-8')
+                send_media_type_bytes_len = len(send_media_type_bytes)
+                send_media_type_len_bytes = send_media_type_bytes_len.to_bytes(1, "big")
+
+                send_header = send_json_string_len_bytes + send_media_type_len_bytes + send_payload_size
+
+                connection.sendall(send_header)
+
+                send_body = send_json_string_bytes + send_media_type_bytes
+
+                connection.sendall(send_body)
+
+                with open(send_file_path, 'rb') as f:
+                    while (chunk := f.read(self.buffer_size)):
+                        connection.sendall(chunk)
             
             except Exception as e:
                 print(f"Error: {e}")
+                send_json_file = {
+                    "error": False,
+                    "error_message": None
+                }
+                send_json_file["error"] = True
+                send_json_file["error_message"] = e
+
+                send_json_string_bytes = json.dumps(send_json_file).encode('utf-8')
+                send_json_string_bytes_size = len(send_json_string_bytes)
+                send_json_string_len_bytes = send_json_string_bytes_size.to_bytes(2, "big")
+
+                send_file_size_int = 0
+                send_payload_size = send_file_size_int.to_bytes(5, 'big')
+
+                send_file_split = os.path.splitext(send_file_path)
+
+                send_media_type_bytes_len = 0
+                send_media_type_len_bytes = send_media_type_bytes_len.to_bytes(1, "big")
+
+                send_error = send_json_string_len_bytes + send_media_type_len_bytes + send_payload_size + send_json_string_bytes
+
+                connection.sendall(send_error)
             
             finally:
                 print("Closing current connection")
@@ -107,6 +160,8 @@ class TCPServer:
         # 元のファイルを削除して圧縮ファイルに置き換え
         os.replace(temp_output, output_file_path)
         print(f"圧縮された動画は {output_file_path} に保存されました")
+
+        return output_file_path
     
 
     # 動画の解像度変更
@@ -132,7 +187,9 @@ class TCPServer:
         
         # 元のファイルを削除して解像度変更ファイルに置き換え
         os.replace(temp_output, output_file_path)
-        print(f"Resolution changed to {width}x{height} and saved to {output_file_path}")
+        print(f"解像度は {width}x{height} に変換され、 {output_file_path} へ保存されました")
+
+        return output_file_path
     
 
     # 動画のアスペクト比変更
@@ -159,7 +216,9 @@ class TCPServer:
         
         # 元のファイルを削除してアスペクト比変更ファイルに置き換え
         os.replace(temp_output, output_file_path)
-        print(f"Aspect ratio changed to {aspect_ratio} and saved to {output_file_path}")
+        print(f"アスペクト比は {aspect_ratio} へ変換され、 {output_file_path} に保存されました")
+
+        return output_file_path
 
 
     # 動画をオーディオに変換
@@ -171,7 +230,9 @@ class TCPServer:
         # 動画ファイルをオーディオに変換
         ffmpeg.input(output_file_path).output(output_mp3_file_path, acodec='mp3').run()
         os.remove(output_file_path)
-        print(f"Audio extracted and saved to {output_mp3_file_path}")
+        print(f"オーディオが抽出され、 {output_mp3_file_path} へ保存されました")
+
+        return output_mp3_file_path
     
 
     # 時間範囲でのGIFの作成
@@ -182,8 +243,9 @@ class TCPServer:
         
         # 動画から指定した時間範囲で GIF を作成
         ffmpeg.input(output_file_path, ss=start_time, t=duration).output(output_gif_file_path, vf='fps=10', loop=0).run()
-        print(f"GIF created from {start_time} for {duration} seconds and saved to {output_gif_file_path}")
-    
+        print(f"{start_time} から {duration} 秒間のGIFが作成され、 {output_gif_file_path} に保存されました")
+
+        return output_gif_file_path
 
 
 if __name__ == "__main__":

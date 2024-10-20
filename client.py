@@ -68,6 +68,7 @@ class TCPClient:
             json_string_bytes_size = len(json_string_bytes)
             json_string_len_bytes = json_string_bytes_size.to_bytes(2, "big")
 
+            # 動画ファイルの送受信用のソケット接続
             try:
                 self.sock.connect((self.server_address, self.server_port))
             except self.sock.error as err:
@@ -98,6 +99,40 @@ class TCPClient:
             else:
                 print("エラーが発生しました")
                 sys.exit(1)
+            
+            # 処理済みファイル受信
+            receive_header = self.sock.recv(8)
+            receive_json_size = int.from_bytes(receive_header[0:2], 'big')
+            receive_media_type_size = int.from_bytes(receive_header[2:3], 'big')
+            receive_payload_size = int.from_bytes(receive_header[3:8], 'big')
+
+            receive_body = self.sock.recv(receive_json_size + receive_media_type_size)
+            receive_json = json.loads(receive_body[0:receive_json_size].decode("utf-8"))
+            receive_media_type = receive_body[receive_json_size : receive_json_size + receive_media_type_size].decode("utf-8")
+
+            # 保存するファイル名を決定
+            file_name = file_split[0].split("/")[1]
+            print(file_name)
+            receive_file_path = "receive/" + file_name + "_" + str(receive_payload_size) + receive_media_type
+            
+            # ファイル(ペイロード)を受け取って保存
+            received_data = 0
+            
+            with open(receive_file_path, 'wb') as f:
+                while received_data < receive_payload_size:
+                    data = self.sock.recv(self.buffer_size)
+                    if not data:
+                        break
+                    f.write(data)
+                    received_data += len(data)
+
+            if received_data == receive_payload_size:
+                print("処理済みのファイルが正常にダウンロードできました")
+            else:
+                print("ダウンロードに失敗しました")
+        
+        except Exception as e:
+            print(f"Error: {e}")
         
         finally:
             print("closing socket")
