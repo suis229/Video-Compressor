@@ -125,9 +125,22 @@ class TCPServer:
                 }
                 send_json_file["error"] = True
                 send_json_file["error_message"] = e
-                
 
+                send_json_string_bytes = json.dumps(send_json_file).encode('utf-8')
+                send_json_string_bytes_size = len(send_json_string_bytes)
+                send_json_string_len_bytes = send_json_string_bytes_size.to_bytes(2, "big")
 
+                send_file_size_int = 0
+                send_payload_size = send_file_size_int.to_bytes(5, 'big')
+
+                send_file_split = os.path.splitext(send_file_path)
+
+                send_media_type_bytes_len = 0
+                send_media_type_len_bytes = send_media_type_bytes_len.to_bytes(1, "big")
+
+                send_error = send_json_string_len_bytes + send_media_type_len_bytes + send_payload_size + send_json_string_bytes
+
+                connection.sendall(send_error)
             
             finally:
                 print("Closing current connection")
